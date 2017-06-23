@@ -8,6 +8,7 @@ import io.netty.channel.ChannelHandlerContext;
 import lombok.extern.slf4j.Slf4j;
 
 /**
+ *
  * @author biezhi
  *         2017/4/19
  */
@@ -21,9 +22,12 @@ public class TcpClientHandler extends SimpleClientHandler<RpcResponse> {
      * @return
      */
     public RpcCallbackFuture sendRequest(RpcRequest request) {
+
         RpcCallbackFuture rpcCallbackFuture = new RpcCallbackFuture(request);
         mapCallBack.put(request.getRequestId(), rpcCallbackFuture);
         log.debug("request: {}", request);
+
+        this.setChannelRequestId(request.getRequestId());
         channel.writeAndFlush(request);
         return rpcCallbackFuture;
     }
@@ -33,12 +37,19 @@ public class TcpClientHandler extends SimpleClientHandler<RpcResponse> {
         if (response.getSuccess()) {
             log.debug("response: {}", response);
         }
-        String messageId = response.getRequestId();
-        RpcCallbackFuture rpcCallbackFuture = mapCallBack.get(messageId);
+        String requestId = response.getRequestId();
+        RpcCallbackFuture rpcCallbackFuture = mapCallBack.get(requestId);
         if (rpcCallbackFuture != null) {
-            mapCallBack.remove(messageId);
+            mapCallBack.remove(requestId);
             rpcCallbackFuture.done(response);
         }
+    }
+
+    @Override
+    public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
+        log.error("Tcp client handler error", cause);
+        super.sendError(ctx, cause);
+//        ctx.close();
     }
 
 }

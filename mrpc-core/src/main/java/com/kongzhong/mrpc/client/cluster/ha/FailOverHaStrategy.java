@@ -1,8 +1,8 @@
 package com.kongzhong.mrpc.client.cluster.ha;
 
 import com.kongzhong.mrpc.client.RpcInvoker;
-import com.kongzhong.mrpc.client.cluster.loadblance.LoadBalance;
-import com.kongzhong.mrpc.config.DefaultConfig;
+import com.kongzhong.mrpc.client.cluster.HaStrategy;
+import com.kongzhong.mrpc.client.cluster.LoadBalance;
 import com.kongzhong.mrpc.exception.RpcException;
 import com.kongzhong.mrpc.exception.ServiceException;
 import com.kongzhong.mrpc.model.RpcRequest;
@@ -21,22 +21,22 @@ public class FailOverHaStrategy implements HaStrategy {
 
     @Override
     public Object call(RpcRequest request, LoadBalance loadBalance) throws Exception {
-        int rc = DefaultConfig.serviceRecryCount();
+        int rc = request.getRetryNumber();
         if (rc < 0) {
             rc = 0;
         }
         String serviceName = request.getClassName();
         for (int i = 0; i <= rc; i++) {
             try {
-                RpcInvoker referer = loadBalance.getInvoker(serviceName);
-                return referer.invoke(request);
+                RpcInvoker rpcInvoker = loadBalance.getInvoker(serviceName);
+                return rpcInvoker.invoke(request);
             } catch (Exception e) {
                 if (e instanceof ServiceException) {
                     throw (Exception) e.getCause();
                 } else if (e instanceof RpcException) {
                     if (i >= rc) {
                         log.error("", e);
-                        return null;
+                        throw e;
                     }
                     TimeUnit.MILLISECONDS.sleep(100);
                     log.debug("Client retry [{}]", i + 1);

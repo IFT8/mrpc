@@ -1,11 +1,18 @@
 package com.kongzhong.mrpc.serialize;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.kongzhong.mrpc.exception.SerializeException;
 import lombok.extern.slf4j.Slf4j;
 
+import java.lang.reflect.Type;
 import java.text.SimpleDateFormat;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 
 /**
  * Jackson JSON序列化实现
@@ -14,14 +21,35 @@ import java.text.SimpleDateFormat;
  *         2017/5/11
  */
 @Slf4j
-public class JacksonSerialize implements JSONSerialize {
+public class JacksonSerialize {
 
-    private static final ObjectMapper objectMapper = new ObjectMapper();
+    private static final ObjectMapper mapper = new ObjectMapper();
 
     static {
-        // 默认非空不输出，时间格式
-        objectMapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
-        objectMapper.setDateFormat(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss"));
+        mapper.registerModule(initModule());
+        mapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
+        mapper.setDateFormat(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss"));
+        mapper.enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS);
+        mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+    }
+
+    public static ObjectMapper getMapper() {
+        return mapper;
+    }
+
+    private static SimpleModule initModule() {
+        return new SimpleModule().
+//                addSerializer(BigDecimal.class, new BigDecimalSerializer()).
+        addSerializer(LocalTime.class, new LocalTimeSerializer()).
+                        addDeserializer(LocalTime.class, new LocalTimeDeserializer()).
+                        addSerializer(LocalDate.class, new LocalDateSerializer()).
+                        addDeserializer(LocalDate.class, new LocalDateDeserializer()).
+                        addSerializer(LocalDateTime.class, new LocalDateTimeSerializer()).
+                        addDeserializer(LocalDateTime.class, new LocalDateTimeDeserializer());
+    }
+
+    public static JavaType getJavaType(Type type) {
+        return mapper.getTypeFactory().constructType(type);
     }
 
     /**
@@ -30,25 +58,23 @@ public class JacksonSerialize implements JSONSerialize {
      * @param object
      * @return
      */
-    @Override
-    public String toJSONString(Object object) {
+    public String toJSONString(Object object) throws SerializeException {
         try {
-            return objectMapper.writeValueAsString(object);
+            return mapper.writeValueAsString(object);
         } catch (Exception e) {
-            log.error("Java convert JSON error", e);
+            log.error("Object to json stirng error", e);
             throw new SerializeException(e);
         }
     }
 
-    @Override
-    public String toJSONString(Object object, boolean pretty) {
+    public String toJSONString(Object object, boolean pretty) throws SerializeException {
         if (!pretty) {
             return toJSONString(object);
         }
         try {
-            return objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(object);
+            return mapper.writerWithDefaultPrettyPrinter().writeValueAsString(object);
         } catch (Exception e) {
-            log.error("Java convert JSON error", e);
+            log.error("Object to json stirng error", e);
             throw new SerializeException(e);
         }
     }
@@ -61,14 +87,28 @@ public class JacksonSerialize implements JSONSerialize {
      * @param <T>
      * @return
      */
-    @Override
-    public <T> T parseObject(String json, Class<T> type) {
+    public <T> T parseObject(String json, Class<T> type) throws SerializeException {
         try {
-            return objectMapper.readValue(json, type);
+            return mapper.readValue(json, type);
         } catch (Exception e) {
-            log.error("JSON convert Java error", e);
+            log.error("Json parse to object error", e);
             throw new SerializeException(e);
         }
     }
 
+    /**
+     * json转obj
+     */
+    public <T> T parseObject(String json, Type type) {
+        try {
+            return mapper.readValue(json, genJavaType(type));
+        } catch (Exception e) {
+            log.error("Json parse to object error", e);
+        }
+        return null;
+    }
+
+    private JavaType genJavaType(Type type) {
+        return mapper.getTypeFactory().constructType(type);
+    }
 }

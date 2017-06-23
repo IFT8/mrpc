@@ -1,7 +1,6 @@
 package com.kongzhong.mrpc.transport.http;
 
 import com.kongzhong.mrpc.client.RpcCallbackFuture;
-import com.kongzhong.mrpc.exception.HttpException;
 import com.kongzhong.mrpc.model.RequestBody;
 import com.kongzhong.mrpc.model.RpcRequest;
 import com.kongzhong.mrpc.model.RpcResponse;
@@ -16,11 +15,10 @@ import io.netty.handler.codec.http.*;
 import io.netty.util.CharsetUtil;
 import lombok.extern.slf4j.Slf4j;
 
-import java.util.ArrayList;
+import java.lang.reflect.Method;
 import java.util.Arrays;
-import java.util.List;
 
-import static com.kongzhong.mrpc.model.Const.HEADER_REQUEST_ID;
+import static com.kongzhong.mrpc.Const.*;
 
 /**
  * @author biezhi
@@ -37,29 +35,29 @@ public class HttpClientHandler extends SimpleClientHandler<FullHttpResponse> {
      */
     @Override
     public RpcCallbackFuture sendRequest(RpcRequest rpcRequest) {
-
         RpcCallbackFuture rpcCallbackFuture = new RpcCallbackFuture(rpcRequest);
         mapCallBack.put(rpcRequest.getRequestId(), rpcCallbackFuture);
 
-        RequestBody requestBody = new RequestBody();
-        requestBody.setRequestId(rpcRequest.getRequestId());
-        requestBody.setService(rpcRequest.getClassName());
-        requestBody.setMethod(rpcRequest.getMethodName());
-        requestBody.setParameters(Arrays.asList(rpcRequest.getParameters()));
+        RequestBody requestBody = RequestBody.builder()
+                .requestId(rpcRequest.getRequestId())
+                .service(rpcRequest.getClassName())
+                .method(rpcRequest.getMethodName())
+                .parameters(Arrays.asList(rpcRequest.getParameters()))
+                .build();
 
-        Class<?>[] parameterTypes = rpcRequest.getParameterTypes();
-        if (null != parameterTypes) {
-            List<String> parameterTypesJSON = new ArrayList<>();
-            for (Class<?> type : parameterTypes) {
-                parameterTypesJSON.add(type.getName());
-            }
-            requestBody.setParameterTypes(parameterTypesJSON);
-        }
+//        Class<?>[] parameterTypes = rpcRequest.getParameterTypes();
+//        if (null != parameterTypes) {
+//            List<String> parameterTypesJSON = new ArrayList<>();
+//            for (Class<?> type : parameterTypes) {
+//                parameterTypesJSON.add(type.getName());
+//            }
+//            requestBody.setParameterTypes(parameterTypesJSON);
+//        }
 
         try {
             String sendBody = JSONUtils.toJSONString(requestBody);
 
-            log.debug("request: \n{}", JSONUtils.toJSONString(requestBody, true));
+            log.debug("Request body: \n{}", JSONUtils.toJSONString(requestBody, true));
 
             DefaultFullHttpRequest req = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, "/rpc");
             req.headers().set(HttpHeaders.Names.CONNECTION, HttpHeaders.Values.KEEP_ALIVE);
@@ -70,44 +68,51 @@ public class HttpClientHandler extends SimpleClientHandler<FullHttpResponse> {
             req.headers().set(HttpHeaders.Names.CONTENT_LENGTH, bbuf.readableBytes());
             req.content().clear().writeBytes(bbuf);
 
+            this.setChannelRequestId(rpcRequest.getRequestId());
+
             channel.writeAndFlush(req);
         } catch (Exception e) {
-            log.error("client send request error", e);
+            log.error("Client send request error", e);
         }
         return rpcCallbackFuture;
     }
 
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, FullHttpResponse httpResponse) throws Exception {
-        try {
 
-            ByteBuf buf = httpResponse.content();
-            byte[] resp = new byte[buf.readableBytes()];
-            buf.readBytes(resp);
-            String body = new String(resp, "UTF-8");
+        log.debug("Channel read: {}", ctx.channel());
 
-            if (StringUtils.isEmpty(body)) {
-                return;
+        String body = httpResponse.content().toString(CharsetUtil.UTF_8);
+        if (StringUtils.isEmpty(body)) {
+            return;
+        }
+
+        String requestId = httpResponse.headers().get(HEADER_REQUEST_ID);
+        String serviceClass = httpResponse.headers().get(HEADER_SERVICE_CLASS);
+        String methodName = httpResponse.headers().get(HEADER_METHOD_NAME);
+
+        RpcResponse rpcResponse = JSONUtils.parseObject(body, RpcResponse.class);
+        if (rpcResponse.getSuccess()) {
+            log.debug("Response body: \n{}", body);
+            Object result = rpcResponse.getResult();
+            if (null != result && null != rpcResponse.getReturnType() && !rpcResponse.getReturnType().equals(Void.class)) {
+                Method method = ReflectUtils.method(ReflectUtils.from(serviceClass), methodName);
+                Object object = JSONUtils.parseObject(JSONUtils.toJSONString(result), method.getGenericReturnType());
+                rpcResponse.setResult(object);
             }
-
-            String requestId = httpResponse.headers().get(HEADER_REQUEST_ID);
-
-            RpcResponse rpcResponse = JSONUtils.parseObject(body, RpcResponse.class);
-            if (rpcResponse.getSuccess()) {
-                log.debug("response: \n{}", body);
-                Object result = rpcResponse.getResult();
-                if (null != result && null != rpcResponse.getReturnType() && !rpcResponse.getReturnType().equals(Void.class)) {
-                    Class<?> re = ReflectUtils.getClassType(rpcResponse.getReturnType());
-                    rpcResponse.setResult(JSONUtils.parseObject(JSONUtils.toJSONString(result), re));
-                }
-            }
-            RpcCallbackFuture rpcCallbackFuture = mapCallBack.get(requestId);
-            if (rpcCallbackFuture != null) {
-                mapCallBack.remove(requestId);
-                rpcCallbackFuture.done(rpcResponse);
-            }
-        } catch (Exception e) {
-            throw new HttpException("client read response error", e);
+        }
+        RpcCallbackFuture rpcCallbackFuture = mapCallBack.get(requestId);
+        if (rpcCallbackFuture != null) {
+            mapCallBack.remove(requestId);
+            rpcCallbackFuture.done(rpcResponse);
         }
     }
+
+    @Override
+    public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
+        log.error("Http client accept error", cause);
+        super.sendError(ctx, cause);
+//        ctx.close();
+    }
+
 }

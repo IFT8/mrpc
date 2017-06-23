@@ -1,23 +1,23 @@
 package com.kongzhong.mrpc.transport;
 
-import com.google.common.util.concurrent.ListeningExecutorService;
-import com.google.common.util.concurrent.MoreExecutors;
+import com.kongzhong.mrpc.Const;
 import com.kongzhong.mrpc.client.RpcCallbackFuture;
 import com.kongzhong.mrpc.client.cluster.Connections;
-import com.kongzhong.mrpc.common.thread.RpcThreadPool;
+import com.kongzhong.mrpc.exception.SerializeException;
 import com.kongzhong.mrpc.model.RpcRequest;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import io.netty.util.AttributeKey;
+import lombok.Getter;
+import lombok.Setter;
+import lombok.extern.slf4j.Slf4j;
 
 import java.net.SocketAddress;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ThreadPoolExecutor;
 
 /**
  * 抽象客户端请求处理器
@@ -25,19 +25,19 @@ import java.util.concurrent.ThreadPoolExecutor;
  * @author biezhi
  *         2017/4/19
  */
+@Slf4j
 public abstract class SimpleClientHandler<T> extends SimpleChannelInboundHandler<T> {
-
-    public static final Logger log = LoggerFactory.getLogger(SimpleClientHandler.class);
-
-    private static ListeningExecutorService TPE = MoreExecutors.listeningDecorator((ThreadPoolExecutor) RpcThreadPool.getExecutor(16, -1));
-
-    protected Map<String, RpcCallbackFuture> mapCallBack = new ConcurrentHashMap<>();
-
-    protected volatile Channel channel;
 
     protected SocketAddress socketAddress;
 
+    @Getter
+    protected volatile Channel channel;
+
+    @Getter
+    @Setter
     protected String serverAddress;
+
+    protected Map<String, RpcCallbackFuture> mapCallBack = new ConcurrentHashMap<>();
 
     @Override
     public void channelRegistered(ChannelHandlerContext ctx) throws Exception {
@@ -49,14 +49,23 @@ public abstract class SimpleClientHandler<T> extends SimpleChannelInboundHandler
     public void channelActive(ChannelHandlerContext ctx) throws Exception {
         super.channelActive(ctx);
         this.socketAddress = this.channel.remoteAddress();
-        log.debug("Channel actived");
+        log.debug("Channel actived: {}", this.channel);
     }
+
+    /**
+     * handler 中出现异常才会执行这个函数
+     *
+     * @param ctx
+     * @param cause
+     * @throws Exception
+     */
+    @Override
+    public abstract void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception;
 
     @Override
     public void channelInactive(ChannelHandlerContext ctx) throws Exception {
         super.channelInactive(ctx);
         Connections.me().remove(this);
-
         log.debug("Channel inactive: {}", this.channel);
 
         // 创建异步重连
@@ -68,20 +77,7 @@ public abstract class SimpleClientHandler<T> extends SimpleChannelInboundHandler
 //        }
 //
 //        System.out.println("提交重连请求");
-//        TPE.submit(new SimpleRequestCallback(referNames, eventLoopGroup, this.channel.remoteAddress()));
-    }
-
-    /**
-     * handler 中出现异常才会执行这个函数
-     *
-     * @param ctx
-     * @param cause
-     * @throws Exception
-     */
-    @Override
-    public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
-        log.error("", cause);
-        ctx.close();
+//        LISTENING_EXECUTOR_SERVICE.submit(new SimpleRequestCallback(referNames, eventLoopGroup, this.channel.remoteAddress()));
     }
 
     /**
@@ -93,19 +89,29 @@ public abstract class SimpleClientHandler<T> extends SimpleChannelInboundHandler
 
     public abstract RpcCallbackFuture sendRequest(RpcRequest request);
 
-    public Channel getChannel() {
-        return channel;
+    /**
+     * 在channel上保存一个requestId
+     *
+     * @param requestId
+     */
+    protected void setChannelRequestId(String requestId) {
+        channel.attr(AttributeKey.valueOf(Const.HEADER_REQUEST_ID)).set(requestId);
     }
 
-    public void setChannel(Channel channel) {
-        this.channel = channel;
+    /**
+     * 错误处理
+     *
+     * @param ctx
+     * @param status
+     */
+    protected void sendError(ChannelHandlerContext ctx, Throwable cause) throws SerializeException {
+        Channel channel = ctx.channel();
+        String requestId = channel.attr(AttributeKey.valueOf(Const.HEADER_REQUEST_ID)).get().toString();
+        RpcCallbackFuture rpcCallbackFuture = mapCallBack.get(requestId);
+        if (rpcCallbackFuture != null) {
+            mapCallBack.remove(requestId);
+            rpcCallbackFuture.done(null);
+        }
     }
 
-    public String getServerAddress() {
-        return serverAddress;
-    }
-
-    public void setServerAddress(String serverAddress) {
-        this.serverAddress = serverAddress;
-    }
 }

@@ -1,6 +1,6 @@
 package com.kongzhong.demo.benchmark;
 
-import com.kongzhong.mrpc.client.RpcClient;
+import com.kongzhong.mrpc.client.RpcSpringClient;
 import com.kongzhong.mrpc.demo.service.BenchmarkService;
 
 import java.io.IOException;
@@ -35,8 +35,8 @@ public class RPCBenchmarkClient extends AbstractBenchmarkClient {
             isMultiClient = Boolean.parseBoolean(args[4]);
         }
 
-        RpcClient rpcClient = new RpcClient();
-        benchmarkService = rpcClient.getProxyBean(BenchmarkService.class);
+        RpcSpringClient rpcClient = new RpcSpringClient();
+        benchmarkService = rpcClient.getProxyReferer(BenchmarkService.class);
         new RPCBenchmarkClient().start(concurrents, runtime, classname, params);
     }
 
@@ -53,8 +53,8 @@ public class RPCBenchmarkClient extends AbstractBenchmarkClient {
                                             CountDownLatch latch, long startTime, long endTime) {
         BenchmarkService service;
         if (isMultiClient) {
-            RpcClient rpcClient = new RpcClient();
-            service = rpcClient.getProxyBean(BenchmarkService.class);
+            RpcSpringClient rpcClient = new RpcSpringClient();
+            service = rpcClient.getProxyReferer(BenchmarkService.class);
 //            ConfigurableApplicationContext ctx = new ClassPathXmlApplicationContext("spring-rpc.xml");
 //            service = (BenchmarkService) ctx.getBean("benchmarkService");
         } else {

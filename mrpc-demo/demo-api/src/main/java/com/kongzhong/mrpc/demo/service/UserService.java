@@ -31,6 +31,8 @@ public interface UserService {
 
     Result<Person> getResult();
 
+    void setPersons(List<Person> persons);
+
     Map toMap(Map<String, Integer> map);
 
     void testArray(String[] strs);
@@ -40,4 +42,5 @@ public interface UserService {
     void testNormalExp() throws Exception;
 
     StatusEnum testEnum(StatusEnum statusEnum);
+
 }

@@ -1,8 +1,8 @@
 package com.kongzhong.mrpc.transport;
 
 import com.kongzhong.mrpc.client.cluster.Connections;
-import com.kongzhong.mrpc.config.ClientConfig;
-import com.kongzhong.mrpc.serialize.RpcSerialize;
+import com.kongzhong.mrpc.config.ClientCommonConfig;
+import com.kongzhong.mrpc.enums.TransportEnum;
 import com.kongzhong.mrpc.transport.http.HttpClientChannelInitializer;
 import com.kongzhong.mrpc.transport.http.HttpClientHandler;
 import com.kongzhong.mrpc.transport.tcp.TcpClientChannelInitializer;
@@ -31,7 +31,6 @@ public class SimpleRequestCallback implements Callable<Boolean> {
 
     protected EventLoopGroup eventLoopGroup = null;
     protected SocketAddress serverAddress = null;
-    protected RpcSerialize rpcSerialize;
     private boolean isHttp = false;
 
     private Lock lock = new ReentrantLock();
@@ -47,11 +46,10 @@ public class SimpleRequestCallback implements Callable<Boolean> {
     private Set<String> referNames;
 
     public SimpleRequestCallback(Set<String> referNames, EventLoopGroup eventLoopGroup, SocketAddress serverAddress) {
+        this.isHttp = ClientCommonConfig.me().getTransport().equals(TransportEnum.HTTP);
         this.referNames = referNames;
         this.eventLoopGroup = eventLoopGroup;
         this.serverAddress = serverAddress;
-        this.rpcSerialize = ClientConfig.me().getRpcSerialize();
-        this.isHttp = ClientConfig.me().isHttp();
     }
 
     @Override
@@ -60,6 +58,12 @@ public class SimpleRequestCallback implements Callable<Boolean> {
         return Boolean.TRUE;
     }
 
+    /**
+     * 建立连接
+     *
+     * @param b
+     * @param eventLoopGroup
+     */
     private void connectServer(Bootstrap b, EventLoopGroup eventLoopGroup) {
         b.group(eventLoopGroup)
                 .channel(NioSocketChannel.class)

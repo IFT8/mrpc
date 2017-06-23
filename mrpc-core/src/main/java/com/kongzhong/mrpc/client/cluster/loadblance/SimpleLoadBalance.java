@@ -1,8 +1,9 @@
 package com.kongzhong.mrpc.client.cluster.loadblance;
 
-import com.kongzhong.mrpc.client.RpcInvoker;
+import com.kongzhong.mrpc.client.SimpleRpcInvoker;
 import com.kongzhong.mrpc.client.cluster.Connections;
-import com.kongzhong.mrpc.config.ClientConfig;
+import com.kongzhong.mrpc.client.cluster.LoadBalance;
+import com.kongzhong.mrpc.enums.LbStrategyEnum;
 import com.kongzhong.mrpc.exception.RpcException;
 import com.kongzhong.mrpc.transport.SimpleClientHandler;
 import lombok.extern.slf4j.Slf4j;
@@ -23,30 +24,35 @@ public class SimpleLoadBalance implements LoadBalance {
     private AtomicInteger posInt = new AtomicInteger(0);
     private Random random = new Random();
 
+    private LbStrategyEnum lbStrategy;
+
     /**
      * 性能优于AtomicInteger（JDK8出现）
      */
     private LongAdder posLong = new LongAdder();
 
+    public SimpleLoadBalance(LbStrategyEnum lbStrategyEnum) {
+        this.lbStrategy = lbStrategyEnum;
+    }
+
     @Override
-    public RpcInvoker getInvoker(String serviceName) throws Exception {
+    public SimpleRpcInvoker getInvoker(String serviceName) throws Exception {
         try {
-            LBStrategy LBStrategy = ClientConfig.me().getLbStrategy();
             List<SimpleClientHandler> handlers = Connections.me().getHandlers(serviceName);
             if (handlers.size() == 1) {
-                return new RpcInvoker(handlers.get(0));
+                return new SimpleRpcInvoker(handlers.get(0));
             }
             if (handlers.size() == 0) {
                 throw new RpcException("Service [" + serviceName + "] not found.");
             }
-            if (LBStrategy == LBStrategy.ROUND) {
-                return new RpcInvoker(this.round(handlers));
+            if (lbStrategy == LbStrategyEnum.ROUND) {
+                return new SimpleRpcInvoker(this.round(handlers));
             }
-            if (LBStrategy == LBStrategy.RANDOM) {
-                return new RpcInvoker(this.random(handlers));
+            if (lbStrategy == LbStrategyEnum.RANDOM) {
+                return new SimpleRpcInvoker(this.random(handlers));
             }
-            if (LBStrategy == LBStrategy.LAST) {
-                return new RpcInvoker(this.last(handlers));
+            if (lbStrategy == LbStrategyEnum.LAST) {
+                return new SimpleRpcInvoker(this.last(handlers));
             }
         } catch (Exception e) {
             if (e instanceof RpcException) {

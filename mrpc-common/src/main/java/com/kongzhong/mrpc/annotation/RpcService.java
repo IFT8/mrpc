@@ -24,17 +24,30 @@ public @interface RpcService {
     Class<?> value() default NoInterface.class;
 
     /**
-     * 当前服务版本号
-     *
-     * @return
-     */
-//    String version() default "0.0.1";
-
-    /**
      * 服务所属APPID（服务分组）
      *
      * @return
      */
-    String appId() default "";
+    String appId() default "default";
 
+    /**
+     * 注册中心
+     *
+     * @return
+     */
+    String registry() default "default";
+
+    /**
+     * 服务绑定地址
+     *
+     * @return
+     */
+    String address() default "";
+
+    /**
+     * 外网IP地址
+     *
+     * @return
+     */
+    String elasticIp() default "";
 }

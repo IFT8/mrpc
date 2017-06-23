@@ -1,27 +1,26 @@
 package com.kongzhong.mrpc.springboot.client;
 
-import com.kongzhong.mrpc.client.BootRpcClient;
 import com.kongzhong.mrpc.client.Referers;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
 
 /**
+ * RPC客户端自动配置
+ *
  * @author biezhi
  *         2017/5/13
  */
-@Configuration
-@ConditionalOnProperty("mrpc.client.transport")
 @Slf4j
+@ConditionalOnProperty("mrpc.client.transport")
 public class RpcClientAutoConfigure {
 
     @Bean
-    @ConditionalOnBean(Referers.class)
+    @ConditionalOnBean(value = Referers.class)
     public BootRpcClient bootRpcClient() {
-        BootRpcClient bootRpcClient = new BootRpcClient();
-        return bootRpcClient;
+        log.debug("Initializing rpc client referers");
+        return new BootRpcClient();
     }
 
 }
